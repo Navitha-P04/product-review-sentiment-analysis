@@ -1,98 +1,182 @@
-import streamlit as st
+#Import necessary libraries
+
 import pandas as pd
+import numpy as np
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from textblob import TextBlob
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
-import numpy as np
-import warnings
+#Load the dataset
+                              
 
-# Load dataset
-data = pd.read_csv("Data.csv")
-warnings.filterwarnings('ignore')
+file_path = 'D:/Project 240/new code/sentiment_analysis_dataset .csv'
+dataset = pd.read_csv(file_path, encoding='ISO-8859-1')
 
-# Streamlit UI Title
-st.title('🏋️‍♂️ Fitness Tracker Analysis: Heart Rate, Sleep, and Daily Activity Monitoring')
+#Initialize VADER Sentiment Analyzer
 
-# Sidebar Navigation
-st.sidebar.title('📌 Navigation')
-page = st.sidebar.radio('Go to:', ['Dataset', 'Heart Rate Analysis', 'Classification', 'Recommendations'])
+vader_analyzer = SentimentIntensityAnalyzer()
+#Function to calculate sentiment using VADER
 
-# Dataset Preview
-if page == 'Dataset':
-    st.subheader('📊 Dataset Preview')
-    st.write(data.head())
+def vader_sentiment(review):
+    return vader_analyzer.polarity_scores(review)['compound']
+#Function to calculate sentiment using TextBlob
 
-# Time Series Analysis - Heart Rate Visualization with Filters
-if page == 'Heart Rate Analysis':
-    st.subheader('📈 Heart Rate Time Series Analysis')
-    data['Time'] = pd.to_datetime(data['Time'], format='%H:%M:%S')
-    data = data.sort_values(by='Time')
-    
-    # Filtering Data Points
-    sample_size = st.slider("Select number of sample data points:", 10, 50, 20)
-    sample_data = data.sample(sample_size)
-    
-    fig, ax = plt.subplots(figsize=(10, 5))
-    sns.lineplot(x=sample_data['Time'], y=sample_data['HeartRate (bpm)'], marker='o', color='blue')
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Heart Rate (bpm)')
-    ax.set_title('Heart Rate Trend (Filtered)')
-    ax.grid(True)
+def textblob_sentiment(review):
+    return TextBlob(review).sentiment.polarity
+#Apply VADER and TextBlob sentiment analysis on the 'Review Text'
+
+dataset['VADER Sentiment'] = dataset['Review Text'].apply(vader_sentiment)
+dataset['TextBlob Sentiment'] = dataset['Review Text'].apply(textblob_sentiment)
+#Define ACL thresholds for categorizing sentiment
+
+def acl_category(sentiment_score):
+    if sentiment_score > 0.05:
+        return 'Positive'
+    elif sentiment_score < -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+#Apply ACL to categorize the VADER sentiment scores
+
+dataset['Sentiment Category'] = dataset['VADER Sentiment'].apply(acl_category)
+#'Sentiment Category' to filter or analyze specific categories
+#For example, filtering positive reviews
+
+positive_reviews = dataset[dataset['Sentiment Category'] == 'Positive']
+#Aggregate sentiment by year
+
+yearly_sentiment = dataset.groupby('Year').agg({'VADER Sentiment': 'mean', 'TextBlob Sentiment': 'mean'}).reset_index()
+
+#Plot the trend over the years
+
+plt.figure(figsize=(10, 6))
+sns.lineplot(x='Year', y='VADER Sentiment', data=yearly_sentiment, marker='o', label='VADER Sentiment')
+sns.lineplot(x='Year', y='TextBlob Sentiment', data=yearly_sentiment, marker='o', label='TextBlob Sentiment')
+plt.title('Average Sentiment of Product Reviews Over the Years')
+plt.xlabel('Year')
+plt.ylabel('Average Sentiment')
+plt.legend()
+plt.show()
+#Gender distribution in the dataset
+
+plt.figure(figsize=(8, 5))
+sns.countplot(x='Gender', data=dataset)
+plt.title('Distribution of Reviews by Gender')
+plt.xlabel('Gender')
+plt.ylabel('Count')
+plt.show()
+#State distribution in the dataset
+
+plt.figure(figsize=(12, 8))
+sns.countplot(y='state', data=dataset, order=dataset['state'].value_counts().index)
+plt.title('Distribution of Reviews by State')
+plt.xlabel('Count')
+plt.ylabel('State')
+plt.show()
+
+#Create age groups
+
+bins = [18, 25, 35, 45, 55, 65, 75]
+labels = ['18-24', '25-34', '35-44', '45-54', '55-64', '65-74']
+dataset['Age Group'] = pd.cut(dataset['Age'], bins=bins, labels=labels, right=False)
+#Age group distribution
+
+plt.figure(figsize=(10, 6))
+sns.countplot(x='Age Group', data=dataset, order=dataset['Age Group'].value_counts().index)
+plt.title('Distribution of Reviews by Age Group')
+plt.xlabel('Age Group')
+plt.ylabel('Count')
+plt.show()
+#Calculate average sentiment for each product
+
+product_sentiment = dataset.groupby('Product  Name').agg({'VADER Sentiment': 'mean', 'TextBlob Sentiment': 'mean'}).reset_index()
+#Top 10 most positively rated products
+
+top_positive_products = product_sentiment.sort_values(by='VADER Sentiment', ascending=False).head(10)
+plt.figure(figsize=(12, 6))
+sns.barplot(x='VADER Sentiment', y='Product  Name', data=top_positive_products)
+plt.title('Top 10 Most Positively Rated Products')
+plt.xlabel('Average VADER Sentiment')
+plt.ylabel('Product Name')
+plt.show()
+#Save the enhanced dataset with sentiment scores and categories
+
+dataset.to_csv('enhanced_sentiment_analysis_dataset_with_acl.csv', index=False)
+# Streamlit App
+import streamlit as st
+import pandas as pd
+
+
+st.title("Sentiment Analysis Dashboard")
+
+st.sidebar.header("Upload your dataset")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
+
+if uploaded_file is not None:
+    # Load the dataset
+    dataset = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+
+    st.write("Dataset Preview", dataset.head())
+
+    # Apply sentiment analysis
+    dataset['VADER Sentiment'] = dataset['Review Text'].apply(vader_sentiment)
+    dataset['TextBlob Sentiment'] = dataset['Review Text'].apply(textblob_sentiment)
+    dataset['Sentiment Category'] = dataset['VADER Sentiment'].apply(acl_category)
+
+    st.write("Sentiment Analysis Results", dataset.head())
+
+    # Plotting
+    st.header("Average Sentiment Over the Years")
+    yearly_sentiment = dataset.groupby('Year').agg({'VADER Sentiment': 'mean', 'TextBlob Sentiment': 'mean'}).reset_index()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.lineplot(x='Year', y='VADER Sentiment', data=yearly_sentiment, marker='o', label='VADER Sentiment', ax=ax)
+    sns.lineplot(x='Year', y='TextBlob Sentiment', data=yearly_sentiment, marker='o', label='TextBlob Sentiment', ax=ax)
+    plt.title('Average Sentiment of Product Reviews Over the Years')
+    plt.xlabel('Year')
+    plt.ylabel('Average Sentiment')
+    plt.legend()
     st.pyplot(fig)
-    
-# Categorizing Age Groups
-st.subheader('Age Group Categorization: Healthy vs. Unhealthy')
-conditions = [
-    (data['Age'] <= 30) & (data['HeartRate (bpm)'] < 100) & (data['SleepDuration (hours)'] >= 7),
-    (data['Age'] > 30) & (data['HeartRate (bpm)'] < 85) & (data['SleepDuration (hours)'] >= 6)
-]
-labels = ['Healthy', 'Unhealthy']
-data['Health_Status'] = np.select(conditions, labels, default='Unhealthy')
-st.write(data[['Age', 'HeartRate (bpm)', 'SleepDuration (hours)', 'Health_Status']].head(10))
 
-# Classification Model (Decision Tree)
-if page == 'Classification':
-    st.subheader('🤖 User Classification - Decision Tree')
-    X = data[['TotalSteps', 'HeartRate (bpm)', 'SleepDuration (hours)', 'StressLevel', 'Hydration (L)']]
-    y = data['Health_Status']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    st.header("Distribution of Reviews by Gender")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.countplot(x='Gender', data=dataset, ax=ax)
+    plt.title('Distribution of Reviews by Gender')
+    plt.xlabel('Gender')
+    plt.ylabel('Count')
+    st.pyplot(fig)
 
-    model = DecisionTreeClassifier()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    st.header("Distribution of Reviews by State")
+    fig, ax = plt.subplots(figsize=(12, 8))
+    sns.countplot(y='state', data=dataset, order=dataset['state'].value_counts().index, ax=ax)
+    plt.title('Distribution of Reviews by State')
+    plt.xlabel('Count')
+    plt.ylabel('State')
+    st.pyplot(fig)
 
-    st.write('**Accuracy:**', accuracy_score(y_test, y_pred))
-    st.write('**Precision:**', precision_score(y_test, y_pred, average='weighted'))
-    st.write('**Recall:**', recall_score(y_test, y_pred, average='weighted'))
-    st.write('**F1 Score:**', f1_score(y_test, y_pred, average='weighted'))
+    st.header("Distribution of Reviews by Age Group")
+    bins = [18, 25, 35, 45, 55, 65, 75]
+    labels = ['18-24', '25-34', '35-44', '45-54', '55-64', '65-74']
+    dataset['Age Group'] = pd.cut(dataset['Age'], bins=bins, labels=labels, right=False)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.countplot(x='Age Group', data=dataset, order=dataset['Age Group'].value_counts().index, ax=ax)
+    plt.title('Distribution of Reviews by Age Group')
+    plt.xlabel('Age Group')
+    plt.ylabel('Count')
+    st.pyplot(fig)
 
-    # Confusion Matrix
-    cm = confusion_matrix(y_test, y_pred)
-    fig_cm, ax_cm = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt='d', cmap='coolwarm', ax=ax_cm)
-    st.pyplot(fig_cm)
+    st.header("Top 10 Most Positively Rated Products")
+    product_sentiment = dataset.groupby('Product  Name').agg({'VADER Sentiment': 'mean', 'TextBlob Sentiment': 'mean'}).reset_index()
+    top_positive_products = product_sentiment.sort_values(by='VADER Sentiment', ascending=False).head(10)
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.barplot(x='VADER Sentiment', y='Product  Name', data=top_positive_products, ax=ax)
+    plt.title('Top 10 Most Positively Rated Products')
+    plt.xlabel('Average VADER Sentiment')
+    plt.ylabel('Product Name')
+    st.pyplot(fig)
 
-# Health Alerts & Recommendations
-if page == 'Recommendations':
-    st.subheader('🚨 Health Alerts & Personalized Recommendations')
-    recommendations = [
-        "Stay active and maintain a balanced workout routine!",
-        "Try meditating or yoga to reduce stress levels.",
-        "Ensure you drink enough water daily to stay hydrated.",
-        "Maintain a consistent sleep schedule for better recovery.",
-        "Reduce screen time before bed for quality sleep.",
-        "Incorporate stretching and mobility exercises in your routine.",
-        "Monitor your heart rate trends to detect early health warnings.",
-        "Eat a balanced diet rich in proteins, vitamins, and minerals.",
-        "Consider reducing caffeine intake if sleep is an issue.",
-        "Take breaks between workouts to allow muscle recovery."
-    ]
-    
-    for index, row in data.iterrows():
-        advice = np.random.choice(recommendations)
-        status = "✅ Keep up the good work maintaining your fitness routine!" if row['Health_Status'] == 'Healthy' else f"🚨 {advice}"
-        st.write(f"**User {row['ID']}**: {status}")
-
-
+    # Save enhanced dataset
+    st.sidebar.header("Save Enhanced Dataset")
+    if st.sidebar.button("Save Dataset"):
+        output = StringIO()
+        dataset.to_csv(output, index=False)
+        st.download_button(label="Download Enhanced Dataset", data=output.getvalue(), file_name='enhanced_sentiment_analysis_dataset_with_acl.csv', mime='text/csv')
